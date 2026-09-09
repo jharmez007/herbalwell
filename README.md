@@ -107,3 +107,7 @@ To repeat the production HTTP checks, run `npm run build`, then `npm run start -
 
 The browser runtime reported no available browser. Consequently screenshots, actual viewport resizing, Lighthouse, real-browser modal focus containment and real-device tests were not completed. Responsive rules cover 320px, 360px, 760px and 1050px breakpoints, but source review is not a visual conformance test. The modal and navigation interactions passed simulated DOM tests. No claim of fully verified WCAG 2.2 AA or Lighthouse scores is made. See `IMPLEMENTATION_REPORT.md` for handoff details.
 # herbalwell
+
+## Motion enhancement
+
+The site now uses dependency-free CSS motion with Intersection Observer, accessible overlay scroll/focus management, reduced-motion fallbacks and a conditional sticky WhatsApp action. Timing tokens live in `app/motion.css`; reusable reveal and observer controls are in `components/motion.tsx`. All 31 automated tests pass. See [MOTION_REPORT.md](./MOTION_REPORT.md) for the route-by-route changes, measured bundle impact, test results, preview steps and outstanding browser/viewport checks. The earlier 17-test validation section records the initial release; this report covers the enhancement phase. No public deployment was performed.

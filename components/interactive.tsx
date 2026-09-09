@@ -1,9 +1,10 @@
 'use client';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { business, money, navLinks } from '@/lib/business';
+import { lockBodyScroll, prefersReducedMotion } from '@/lib/motion';
 import { cleanText, orderMessage, validateContact, whatsappUrl, type ContactValues } from '@/lib/whatsapp';
 
 export function WhatsAppOrderButton({ quantity, children = 'Order via WhatsApp', className = '', enquiry }: { quantity?: number; children?: React.ReactNode; className?: string; enquiry?: string }) {
@@ -16,13 +17,51 @@ export function MobileNavigation() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const toggle = useRef<HTMLButtonElement>(null);
-  return <div className="mobile-navigation" onKeyDown={e => { if (e.key === 'Escape') { setOpen(false); toggle.current?.focus(); } }}>
-    <button className="menu-toggle" ref={toggle} aria-expanded={open} aria-controls="mobile-menu" onClick={() => setOpen(!open)}>{open ? 'Close ×' : 'Menu ☰'}</button>
-    {open && <nav id="mobile-menu" aria-label="Mobile navigation">{navLinks.map(([label, href]) => <Link key={href} href={href} aria-current={pathname === href ? 'page' : undefined} onClick={() => setOpen(false)}>{label}</Link>)}<WhatsAppOrderButton /></nav>}
+  const root = useRef<HTMLDivElement>(null);
+  const close = () => { setOpen(false); toggle.current?.focus(); };
+  useEffect(() => {
+    const navigation = () => { setOpen(false); if (root.current?.contains(document.activeElement)) toggle.current?.focus(); };
+    window.addEventListener('popstate', navigation);
+    return () => window.removeEventListener('popstate', navigation);
+  }, []);
+  useEffect(() => {
+    if (!open) return;
+    const release = lockBodyScroll();
+    const menuRoot = root.current;
+    const background = Array.from(document.querySelectorAll<HTMLElement>('main, footer, .header .brand, .desktop-nav, .header-order'));
+    const previous = background.map(el => el.inert);
+    background.forEach(el => { el.inert = true; });
+    menuRoot?.querySelector<HTMLAnchorElement>('nav a')?.focus();
+    const desktop = window.matchMedia('(min-width: 761px)');
+    const resize = () => { if (desktop.matches) setOpen(false); };
+    desktop.addEventListener('change', resize);
+    return () => {
+      release(); background.forEach((el, i) => { el.inert = previous[i]; });
+      if (desktop.matches && menuRoot?.contains(document.activeElement)) document.querySelector<HTMLElement>('.header .brand')?.focus();
+      desktop.removeEventListener('change', resize);
+    };
+  }, [open]);
+  return <div className="mobile-navigation" ref={root} onKeyDown={e => {
+    if (e.key === 'Escape') { e.preventDefault(); close(); }
+    if (e.key === 'Tab' && open) {
+      const controls = root.current?.querySelectorAll<HTMLElement>('button, nav a');
+      if (!controls?.length) return;
+      const first = controls[0], last = controls[controls.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  }}>
+    <button className="menu-toggle" ref={toggle} aria-expanded={open} aria-controls="mobile-menu" onClick={() => open ? close() : setOpen(true)}>
+      {open ? 'Close' : 'Menu'}<span className="menu-icon" aria-hidden="true"><i/><i/></span>
+    </button>
+    <nav id="mobile-menu" aria-label="Mobile navigation" data-open={open} inert={!open} aria-hidden={!open}>
+      {navLinks.map(([label, href]) => <Link key={href} href={href} aria-current={pathname === href ? 'page' : undefined} onClick={close}>{label}</Link>)}
+      <WhatsAppOrderButton />
+    </nav>
   </div>;
 }
 export function QuantitySelector({ quantity, onChange }: { quantity: number; onChange: (n: number) => void }) {
-  return <div className="quantity" role="group" aria-label="Order quantity"><button type="button" aria-label="Decrease quantity" disabled={quantity <= 1} onClick={() => onChange(quantity - 1)}>−</button><output aria-live="polite" aria-label="Quantity">{quantity}</output><button type="button" aria-label="Increase quantity" disabled={quantity >= 99} onClick={() => onChange(quantity + 1)}>+</button></div>;
+  return <div className="quantity" role="group" aria-label="Order quantity"><button type="button" aria-label="Decrease quantity" disabled={quantity <= 1} onClick={() => onChange(quantity - 1)}>−</button><output aria-live="polite" aria-atomic="true" aria-label="Quantity"><span key={quantity} className="quantity-value">{quantity}</span></output><button type="button" aria-label="Increase quantity" disabled={quantity >= 99} onClick={() => onChange(quantity + 1)}>+</button></div>;
 }
 export function OrderPanel() {
   const [quantity, setQuantity] = useState(1);
@@ -34,19 +73,50 @@ export function OrderPanel() {
 export function ProductGallery({ hero = false }: { hero?: boolean }) {
   const [active, setActive] = useState(0);
   const images = business.product.images;
-  if (!images.length) return <div className={`product-visual ${hero ? 'hero-visual' : ''}`}><span className="visual-top">THE EVERYDAY WELLNESS COLLECTION</span><div className="visual-orbit" aria-hidden="true"/><div className="bottle" role="img" aria-label="Illustrative packaging placeholder for POWER ZOOX; not actual product packaging"><div className="bottle-cap"/><div className="bottle-body"><div className="bottle-label"><span className="bottle-brand">Blessing<br/><small>HERBAL WELLNESS</small></span><span className="bottle-rule"/><strong>POWER<br/>ZOOX</strong><span className="bottle-sub">HERBAL WELLNESS<br/>FOR ADULT MEN</span><span className="bottle-size">500ml · 18+</span></div></div></div><div className="visual-bottom"><span>ROOTED IN NATURE</span><span>01 / 01</span></div><p className="placeholder-caption">Packaging illustration · product photo pending</p></div>;
-  return <div className="gallery"><Image src={images[active].src} alt={images[active].alt} width={720} height={820} sizes="(max-width: 760px) 100vw, 50vw" priority={hero}/>{images.length > 1 && <div className="gallery-thumbs">{images.map((im, i) => <button key={im.src} onClick={() => setActive(i)} aria-label={`View product image ${i + 1}`} aria-pressed={active === i}><Image src={im.src} alt="" width={70} height={80}/></button>)}</div>}</div>;
+  if (!images.length) return <div className={`product-visual ${hero ? 'hero-visual' : ''}`}><span className="visual-top">THE EVERYDAY WELLNESS COLLECTION</span><div className="visual-orbit" aria-hidden="true"/><div className="botanical-accent" aria-hidden="true"><i/><i/></div><div className="bottle" role="img" aria-label="Illustrative packaging placeholder for POWER ZOOX; not actual product packaging"><div className="bottle-cap"/><div className="bottle-body"><div className="bottle-label"><span className="bottle-brand">Blessing<br/><small>HERBAL WELLNESS</small></span><span className="bottle-rule"/><strong>POWER<br/>ZOOX</strong><span className="bottle-sub">HERBAL WELLNESS<br/>FOR ADULT MEN</span><span className="bottle-size">500ml · 18+</span></div></div></div><div className="visual-bottom"><span>ROOTED IN NATURE</span><span>01 / 01</span></div><p className="placeholder-caption">Packaging illustration · product photo pending</p></div>;
+  return <div className="gallery"><Image key={images[active].src} className="gallery-main" src={images[active].src} alt={images[active].alt} width={720} height={820} sizes="(max-width: 760px) 100vw, 50vw" priority={hero}/>{images.length > 1 && <div className="gallery-thumbs">{images.map((im, i) => <button key={im.src} onClick={() => setActive(i)} aria-label={`View product image ${i + 1}`} aria-pressed={active === i}><Image src={im.src} alt="" width={70} height={80}/></button>)}</div>}</div>;
 }
 export function AgeConfirmation() {
   const dialog = useRef<HTMLDialogElement>(null);
   const accept = useRef<HTMLButtonElement>(null);
+  const release = useRef<(() => void) | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const finish = () => {
+    if (timer.current) clearTimeout(timer.current);
+    dialog.current?.close();
+    release.current?.(); release.current = null;
+    document.getElementById('main')?.focus();
+  };
   useEffect(() => {
     let confirmed = false;
     try { confirmed = localStorage.getItem('bhw-adult') === 'true'; } catch { /* Storage may be disabled. */ }
-    if (!confirmed) { dialog.current?.showModal(); accept.current?.focus(); }
+    if (!confirmed) {
+      dialog.current?.showModal();
+      release.current = lockBodyScroll();
+      accept.current?.focus();
+    }
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const preferenceChanged = () => { if (media.matches && dialog.current?.dataset.closing === 'true') finish(); };
+    media.addEventListener('change', preferenceChanged);
+    return () => { if (timer.current) clearTimeout(timer.current); release.current?.(); release.current = null; media.removeEventListener('change', preferenceChanged); };
   }, []);
-  const confirm = () => { try { localStorage.setItem('bhw-adult', 'true'); } catch { /* Confirmation lasts for this session. */ } dialog.current?.close(); document.getElementById('main')?.focus(); };
+  const confirm = () => {
+    if (dialog.current?.dataset.closing === 'true') return;
+    try { localStorage.setItem('bhw-adult', 'true'); } catch { /* Confirmation lasts for this session. */ }
+    if (prefersReducedMotion()) { finish(); return; }
+    if (dialog.current) dialog.current.dataset.closing = 'true';
+    timer.current = setTimeout(finish, 180);
+  };
   return <dialog ref={dialog} className="age-dialog" aria-labelledby="age-title" aria-describedby="age-copy" onCancel={e => e.preventDefault()}><div className="eyebrow">A MOMENT BEFORE YOU BEGIN</div><h2 id="age-title">Wellness for adults.</h2><p id="age-copy">Blessing Herbal Wellness provides products intended for adults aged 18 and above. Please confirm that you are at least 18.</p><button className="button" ref={accept} onClick={confirm}>I am 18 or older <span aria-hidden="true">→</span></button><a className="leave-link" href="https://www.google.com/" rel="noreferrer">Leave website</a><p className="small muted">Your confirmation is saved only on this device.</p></dialog>;
+}
+
+export function FAQItem({ question, answer, index }: { question: string; answer: string; index: number }) {
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  return <details onToggle={event => setOpen(event.currentTarget.open)} data-expanded={open}>
+    <summary aria-expanded={open} aria-controls={id}><span className="faq-number">{String(index + 1).padStart(2, '0')}</span>{question}<span className="faq-plus" aria-hidden="true">+</span></summary>
+    <div id={id} className="faq-answer"><p>{answer}</p></div>
+  </details>;
 }
 export function ContactForm() {
   const [errors, setErrors] = useState<ReturnType<typeof validateContact>>({});
